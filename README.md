@@ -19,6 +19,14 @@ export PYTHONPATH=$PYTHONPATH:<PATH TO THIS REPO>/flowsim
 ```
 **Remember to replace <PATH TO THIS REPO> to your own path to this repository!**
 
+An example run: 
+
+```
+python run.py
+```
+Check the hit rate, quality score, average retrieval time in log/receiver.log. 
+
+
 ### Where to add your code
 
 - Sending function @ the sender: add your implementation  in the ```run``` function. To send a KV cache of a specific ```doc_id```, and a specific compression version ```version```, call the ```send_doc(doc_id, version)``` function which will send the KV cache to buffer. Note that the ```send_doc``` is an asynchronous function. 

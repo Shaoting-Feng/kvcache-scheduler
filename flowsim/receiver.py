@@ -48,8 +48,9 @@ class Receiver:
         end = monotonic_ns()
         with self._lock:
             self._miss_cnt += 1 if resp is None else 0
-            self._qual_score.append(resp.quality if resp is not None else 0)
-            self._jct.append((end - st) / 1e6)
+            if resp is not None:
+                self._qual_score.append(resp.quality)
+                self._jct.append((end - st) / 1e6)
         if resp is None:
             self._logger.info(f"Buffer reports doc {doc_id} is not ready yet.")
         else:
