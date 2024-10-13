@@ -1,0 +1,20 @@
+[tool.ruff]
+fix = true
+line-length = 79
+indent-width = 4
+target-version = "py311"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["E", "F", "N", "W", "C4", "Q", "D", "PD", "I001"]
+ignore = [
+	"E402", "D100", "D101", "D102", "D104", "D105", "D107", "D417"
+]
+fixable = ["ALL"]
+unfixable = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
