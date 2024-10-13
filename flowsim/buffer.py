@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from threading import Condition, Event, RLock, Thread
 from typing import Dict, List, Optional
+from time import monotonic_ns
 
 import pandas as pd
 
@@ -11,12 +12,14 @@ LOG_DIR: Path = Path(__file__).parent.parent / "log"
 TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
 
 BUF2RECV_BW: pd.DataFrame = pd.read_csv(TRACE_DIR / "buf2recv_bw.csv")
+ST = monotonic_ns()
 
 
 class Request:
     def __init__(self, id: int) -> None:
         self.id = id
         self.resp: Optional[Document] = None
+        self.submit_time: int = monotonic_ns() - ST
         self._done: Event = Event()
 
     def wait_for_resp(self) -> Optional[Document]:
@@ -29,6 +32,9 @@ class Request:
     def respond(self, resp: Optional[Document]) -> None:
         self.resp = resp
         self._done.set()
+
+    def enqueue_time(self) -> int:
+        return monotonic_ns() - ST - self.submit_time
 
 
 class Buffer:
@@ -68,6 +74,9 @@ class Buffer:
 
         # example FIFO scheduling
         request = self._job_queue.pop(0)
+        self._logger.info(
+            f"Request enqueue time {request.enqueue_time() / 1e6} ms"
+        )
 
         ######################## STUDENT CODE ENDS HERE #######################
 
@@ -83,7 +92,7 @@ class Buffer:
     def put(self, doc: Document) -> None:
         """Add a document KV Cache to the buffer."""
         self._logger.info(
-            f"Buffer received document {doc.id}"
+            f"Buffer received document {doc.id:.0f}"
             f" with quality score {doc.quality}."
         )
         self._cache_store[doc.id] = doc

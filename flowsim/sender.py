@@ -81,12 +81,12 @@ class Sender:
         self._n_ongoing_send.dec()
 
         self._logger.info(
-            f"Sent doc {int(doc.id)} with generation latency"
+            f"Sent doc {int(doc.id):.0f} with generation latency"
             f" {real_gen_lat / 1e3:.2f} ms and transmission"
             f" latency {real_trans_lat / 1e3:.2f} ms."
         )
 
-    def send_doc(self, doc: Document) -> Future:
+    def send_doc(self, doc_id: int, version: int) -> Future:
         """Send a document to the buffer.
 
         The function submits a document to the buffer. Note that the function
@@ -97,6 +97,30 @@ class Sender:
         Args:
         doc (Document): Document to be sent.
         """
+        row = self._trace.loc[self._trace["doc_id"] == doc_id].iloc[0]
+        if version == 1:
+            doc = Document(
+                id=row.doc_id,
+                size=row.v1_size,
+                quality=row.v1_score,
+                gen_lat=row.v1_lat,
+            )
+        elif version == 2:
+            doc = Document(
+                id=row.doc_id,
+                size=row.v2_size,
+                quality=row.v2_score,
+                gen_lat=row.v2_lat,
+            )
+        elif version == 3:
+            doc = Document(
+                id=row.doc_id,
+                size=row.v3_size,
+                quality=row.v3_score,
+                gen_lat=row.v3_lat,
+            )
+        else:
+            raise ValueError(f"Unsupported version id {version}")
         return self._workers.submit(self._submit_sending, doc)
 
     def run(self) -> None:
@@ -106,13 +130,7 @@ class Sender:
         # jobs shares the GPU and transmission link.
         # replace this with your own scheduling logic
         for _, row in self._trace.iterrows():
-            doc = Document(
-                id=row.doc_id,
-                size=row.v1_size,
-                quality=row.v1_score,
-                gen_lat=row.v1_lat,
-            )
             usleep(int(50000))
-            self.send_doc(doc)
+            self.send_doc(row.doc_id, 1)
 
         ######################## STUDENT CODE ENDS HERE #######################

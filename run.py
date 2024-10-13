@@ -13,11 +13,11 @@ def main():
 
     receiver_thread: Thread = Thread(target=receiver.trace_replay)
     sender_thread: Thread = Thread(target=sender.run)
+    sender_thread.daemon = True
 
     sender_thread.start()
     receiver_thread.start()
 
-    sender_thread.join()
     receiver_thread.join()
 
 
