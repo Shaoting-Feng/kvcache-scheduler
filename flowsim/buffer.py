@@ -3,6 +3,7 @@ from pathlib import Path
 from threading import Condition, Event, RLock, Thread
 from typing import Dict, List, Optional
 from time import monotonic_ns
+import yaml
 
 import pandas as pd
 
@@ -14,6 +15,9 @@ TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
 BUF2RECV_BW: pd.DataFrame = pd.read_csv(TRACE_DIR / "buf2recv_bw.csv")
 ST = monotonic_ns()
 
+with open('./config/buffer.yaml', 'r') as file:
+    config = yaml.safe_load(file)
+buffer_scheduler_value = config.get('buffer_scheduler', None)
 
 class Request:
     def __init__(self, id: int) -> None:
@@ -21,20 +25,24 @@ class Request:
         self.resp: Optional[Document] = None
         self.submit_time: int = monotonic_ns() - ST
         self._done: Event = Event()
+        self.bandwidth_share = 1
 
     def wait_for_resp(self) -> Optional[Document]:
         self._done.wait()
         # fake transmission delay from buffer to receiver
         if self.resp is not None:
-            usleep(int(self.resp.size * 8 / get_cur_bw(BUF2RECV_BW) * 1e6))
+            usleep(int(self.resp.size * 8 / get_cur_bw(BUF2RECV_BW) * 1e6 * self.bandwidth_share))
         return self.resp
 
-    def respond(self, resp: Optional[Document]) -> None:
-        self.resp = resp
+    def respond(self, bs) -> None:
+        self.bandwidth_share = bs
         self._done.set()
 
     def enqueue_time(self) -> int:
         return monotonic_ns() - ST - self.submit_time
+
+    def write_doc(self, resp: Optional[Document]) -> None:
+        self.resp = resp
 
 
 class Buffer:
@@ -67,27 +75,33 @@ class Buffer:
         with self._is_empty:
             self._is_empty.notify()
 
-    def _dispatch(self) -> Request:
+    def _dispatch(self, scheduler: str) -> List[Request]:
         self._wait_not_empty()
 
-        ####################### STUDENT CODE STARTS HERE ######################
-
-        # example FIFO scheduling
-        request = self._job_queue.pop(0)
-        self._logger.info(
-            f"Request enqueue time {request.enqueue_time() / 1e6} ms"
-        )
-
-        ######################## STUDENT CODE ENDS HERE #######################
-
-        return request
+        if scheduler == "fifo":
+            return self.fifo_scheduling()
+        elif scheduler == "concurrent":
+            return self.share_bandwidth()
+        elif scheduler == "sjf":
+            return self.sjf_scheduling()
 
     def _worker(self):
         while True:
-            req: Request = self._dispatch()  # get the request to be handled
-            with self._buf_lock:
-                doc: Optional[Document] = self._cache_store.get(req.id)
-                req.respond(doc)
+            req_list: List[Request] = self._dispatch(buffer_scheduler_value)  # get the requests to be handled
+
+            total_size = sum(req.resp.size for req in req_list)
+            
+            # Store threads for each request
+            threads = []
+            for req in req_list:
+                # Create a thread for each request
+                thread = Thread(target=req.respond, args=(req.resp.size / total_size,))
+                threads.append(thread)
+                thread.start()  
+
+            # 　Wait for all threads to complete
+            for thread in threads:
+                thread.join()
 
     def put(self, doc: Document) -> None:
         """Add a document KV Cache to the buffer."""
@@ -111,6 +125,40 @@ class Buffer:
             return None
 
         req: Request = Request(id)
+
+        with self._buf_lock:
+            doc: Optional[Document] = self._cache_store.get(req.id)
+            req.write_doc(doc)
+
         self._submit_for_sched(req)
         resp: Optional[Document] = req.wait_for_resp()
         return resp
+
+    def fifo_scheduling(self) -> Request:
+        request_list = []
+        request = self._job_queue.pop(0)
+        self._logger.info(
+            f"Request enqueue time {request.enqueue_time() / 1e6} ms"
+        )
+        request_list.append(request)
+        return request_list
+
+    def sjf_scheduling(self) -> Request:
+        request_list = []
+        shortest_request = min(self._job_queue, key=lambda req: req.resp.size)
+        self._job_queue.remove(shortest_request)
+        self._logger.info(
+            f"Request enqueue time {shortest_request.enqueue_time() / 1e6} ms"
+        )
+        request_list.append(shortest_request)
+        return request_list
+
+    def share_bandwidth(self) -> Request:
+        request_list = []
+        for request in self._job_queue:
+            self._job_queue.remove(request)
+            self._logger.info(
+                f"Request enqueue time {request.enqueue_time() / 1e6} ms"
+            )
+            request_list.append(request)
+        return request_list
