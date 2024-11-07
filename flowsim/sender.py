@@ -3,24 +3,17 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 import pandas as pd
-
+from common import get_cur_bw
 
 from flowsim.buffer import Buffer
 from flowsim.common import Document, get_cur_bw, usleep
 
-TRACE_DIR: Path = Path("/local/eaminchan/flowsim/trace")
+TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
 LOG_DIR = Path(__file__).parent.parent / "log"
 
-BUF2RECV_BW: pd.DataFrame = pd.read_csv(TRACE_DIR / "buf2recv_bw.csv")
+SEND2BUFFER_BW: pd.DataFrame = pd.read_csv(TRACE_DIR / "send2buf_bw.csv")
 N_CHUNKS = 100
 MAX_CONCURRENT_SEND = 4
-
-def get_cur_bw(df: pd.DataFrame, current_time: int) -> int:
-    """Retrieve current bandwidth based on time."""
-    df = df[df['ts'] <= current_time]
-    if df.empty:
-        return 1000  # Default bandwidth
-    return df.iloc[-1]['bw']
 
 
 class _AtomicInteger:
@@ -54,7 +47,6 @@ class Sender:
         self._trace: pd.DataFrame = pd.read_csv(trace_file)
         self._n_ongoing_send: _AtomicInteger = _AtomicInteger(0)
         self._workers = ThreadPoolExecutor(MAX_CONCURRENT_SEND)
-        self.current_time = 0
 
         # Configure logging
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -69,14 +61,25 @@ class Sender:
         self._logger.addHandler(file_handler)
         self._logger.setLevel(logging.INFO)
 
-    def _submit_sending(self, doc: Document, bw_share: float = 1.0) -> None:
+        # Configure separate logging for start of sending documents
+        self._start_logger = logging.getLogger("SenderStartLogger")
+        start_file_handler = logging.FileHandler(LOG_DIR / "sender_start.log", mode="w")
+        start_file_handler.setFormatter(formatter)
+        self._start_logger.addHandler(start_file_handler)
+        self._start_logger.setLevel(logging.INFO)
+
+    def _submit_sending(self, doc: Document, version: int, bw_share: float = 1.0) -> None:
+        self._start_logger.info(
+            f"Starting to send doc {int(doc.id):.0f} with version v{version} "
+            f"(Size: {doc.size}, Quality: {doc.quality}, Generation Latency: {doc.gen_lat} ms)"
+        )
         real_gen_lat: float = 0
         real_trans_lat: float = 0
         self._n_ongoing_send.inc()
         sz_per_chunk = doc.size / N_CHUNKS
         lat_per_chunk = doc.gen_lat / N_CHUNKS
         for _ in range(N_CHUNKS):
-            current_bw = get_cur_bw(BUF2RECV_BW, self.current_time) * bw_share
+            current_bw = get_cur_bw(SEND2BUFFER_BW) * bw_share
             chunk_gen_lat = lat_per_chunk * 1e3 * self._n_ongoing_send.value
             chunk_trans_lat = (
                 sz_per_chunk / current_bw * 8 * self._n_ongoing_send.value * 1e6
@@ -84,7 +87,6 @@ class Sender:
             real_gen_lat += chunk_gen_lat
             real_trans_lat += chunk_trans_lat
             usleep(int(chunk_gen_lat + chunk_trans_lat))
-            self.current_time += int(chunk_gen_lat + chunk_trans_lat)
         self._buf.put(doc)
         self._n_ongoing_send.dec()
 
@@ -120,19 +122,19 @@ class Sender:
             )
         else:
             raise ValueError(f"Unsupported version id {version}")
-        return self._workers.submit(self._submit_sending, doc, bw_share)
-
+        return self._workers.submit(self._submit_sending, doc, version, bw_share)
+    
     def run(self, strategy: str = "all_at_once") -> None:
         ####################### STUDENT CODE STARTS HERE ######################
 
-        if strategy == "all_at_once":
-            # All-at-Once Strategy:
-            # Sends all documents at once, allowing them to share
-            # GPU and transmission resources simultaneously.
+        if strategy == "first_come_first_serve":
+            # First-Come-First-Serve Strategy:
+            # Documents are sent in the order they arrive in the trace file,
+            # ensuring that the first document in the list is sent first.
             for _, row in self._trace.iterrows():
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1)
-                
+
         elif strategy == "equal_bandwidth_share":
             # Equal Bandwidth Sharing Strategy:
             # Divides the available bandwidth equally among all documents,
@@ -143,13 +145,7 @@ class Sender:
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1, bw_share=bw_share)
                 
-        elif strategy == "first_come_first_serve":
-            # First-Come-First-Serve Strategy:
-            # Documents are sent in the order they arrive in the trace file,
-            # ensuring that the first document in the list is sent first.
-            for _, row in self._trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, 1)
+
 
         elif strategy == "shortest_gen_latency_first":
             # Shortest Generation Latency First:
@@ -175,10 +171,10 @@ class Sender:
             # Uses v1 (low quality) for low bandwidth, v2 for moderate bandwidth,
             # and v3 (high quality) for high bandwidth conditions.
             for _, row in self._trace.iterrows():
-                current_bw = get_cur_bw(BUF2RECV_BW, self.current_time)
-                if current_bw < 1500:
+                current_bw = get_cur_bw(SEND2BUFFER_BW)
+                if current_bw < 1700:
                     version = 1  # Low bandwidth, choose lower quality
-                elif current_bw < 3000:
+                elif current_bw < 2200:
                     version = 2  # Moderate bandwidth
                 else:
                     version = 3  # High bandwidth, choose highest quality
@@ -229,7 +225,7 @@ if __name__ == "__main__":
     sender = Sender(buffer, trace_file)
 
     # Choose a strategy: "all_at_once", "equal_bandwidth_share", or "first_come_first_serve"
-    strategy = "random_version"  # Change this as needed
+    strategy = "adaptive_version"  # Change this as needed
 
     # Run sender with the selected strategy
     sender.run(strategy=strategy)
