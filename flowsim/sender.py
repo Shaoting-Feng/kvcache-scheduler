@@ -3,7 +3,6 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 import pandas as pd
-from common import get_cur_bw
 
 from flowsim.buffer import Buffer
 from flowsim.common import Document, get_cur_bw, usleep
