@@ -133,19 +133,7 @@ class Sender:
             for _, row in self._trace.iterrows():
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1)
-
-        elif strategy == "equal_bandwidth_share":
-            # Equal Bandwidth Sharing Strategy:
-            # Divides the available bandwidth equally among all documents,
-            # ensuring each document gets an equal portion of the bandwidth.
-            num_docs = len(self._trace)
-            bw_share = 1 / num_docs
-            for _, row in self._trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, 1, bw_share=bw_share)
                 
-
-
         elif strategy == "shortest_gen_latency_first":
             # Shortest Generation Latency First:
             # Sorts documents by their generation latency (v1_lat) and sends
@@ -189,7 +177,27 @@ class Sender:
             for idx, row in enumerate(self._trace.iterrows()):
                 version = versions[idx % len(versions)]
                 usleep(int(50000))
-                self.send_doc(row[1].doc_id, version)
+                self.send_doc(row.doc_id, version)
+
+        elif strategy == "random_version":
+            # Random Version Selection:
+            # Randomly selects a version (v1, v2, or v3) for each document.
+            # This approach introduces randomness to simulate unpredictable network conditions.
+            import random
+            for _, row in self._trace.iterrows():
+                version = random.choice([1, 2, 3])
+                usleep(int(50000))
+                self.send_doc(row.doc_id, version)
+
+        elif strategy == "equal_bandwidth_share":
+            # Equal Bandwidth Sharing Strategy:
+            # Divides the available bandwidth equally among all documents,
+            # ensuring each document gets an equal portion of the bandwidth.
+            num_docs = len(self._trace)
+            bw_share = 1 / num_docs
+            for _, row in self._trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, 1, bw_share=bw_share)
 
         elif strategy == "weighted_fair_share":
             # Weighted Fair Share:
@@ -201,16 +209,6 @@ class Sender:
                 bw_share = row['v1_lat'] / total_lat
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1, bw_share=bw_share)
-
-        elif strategy == "random_version":
-            # Random Version Selection:
-            # Randomly selects a version (v1, v2, or v3) for each document.
-            # This approach introduces randomness to simulate unpredictable network conditions.
-            import random
-            for _, row in self._trace.iterrows():
-                version = random.choice([1, 2, 3])
-                usleep(int(50000))
-                self.send_doc(row.doc_id, version)
 
         else:
             raise ValueError("Unsupported strategy provided")

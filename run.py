@@ -12,7 +12,7 @@ def main():
     sender = Sender(buf, TRACE_DIR / "doc_stats.csv")
 
     receiver_thread: Thread = Thread(target=receiver.trace_replay)
-    sender_thread: Thread = Thread(target=sender.run)
+    sender_thread: Thread = Thread(target=sender.run, kwargs={"strategy": "first_come_first_serve"})
     sender_thread.daemon = True
 
     sender_thread.start()
