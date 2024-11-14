@@ -3,6 +3,7 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
 from flowsim.buffer import Buffer
 from flowsim.common import Document, get_cur_bw, usleep
@@ -143,6 +144,20 @@ class Sender:
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1)
 
+        elif strategy == "shortest_job_first":
+            sorted_trace = self._trace.sort_values(by='v1_size')
+            for _, row in sorted_trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, 1)
+
+        elif strategy == "random":
+            # Random Strategy:
+            # Shuffles the document list randomly, then sends each document in random order.
+            shuffled_trace = self._trace.sample(frac=1).reset_index(drop=True)
+            for _, row in shuffled_trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, 1)
+
         elif strategy == "highest_quality_first":
             # Highest Quality First:
             # Sends documents in descending order of quality score, prioritizing
@@ -188,6 +203,22 @@ class Sender:
                 version = random.choice([1, 2, 3])
                 usleep(int(50000))
                 self.send_doc(row.doc_id, version)
+
+        elif strategy == "random_version_sjf":
+            # Randomly selects a version (v1, v2, or v3) for each document, 
+            # then sorts by the size of the selected version (Shortest Job First).
+            new_trace = self._trace.copy()
+            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace))
+            new_trace['selected_size'] = new_trace.apply(
+                lambda row: row['v1_size'] if row['random_choice'] == 1 else
+                            row['v2_size'] if row['random_choice'] == 2 else
+                            row['v3_size'],
+                axis=1
+            )
+            sorted_trace = new_trace.sort_values(by='selected_size')
+            for _, row in sorted_trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, row.random_choice)
 
         elif strategy == "equal_bandwidth_share":
             # Equal Bandwidth Sharing Strategy:

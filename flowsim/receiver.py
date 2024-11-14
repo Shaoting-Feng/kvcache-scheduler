@@ -23,6 +23,7 @@ class Receiver:
         )
         self._qual_score: List[int] = []
         self._miss_cnt: int = 0
+        self._cnt: int = 0
         self._jct: List[float] = []
         self._lock: Lock = Lock()
 
@@ -48,6 +49,7 @@ class Receiver:
         end = monotonic_ns()
         with self._lock:
             self._miss_cnt += 1 if resp is None else 0
+            self._cnt += 1
             if resp is not None:
                 self._qual_score.append(resp.quality)
                 self._jct.append((end - st) / 1e6)
@@ -79,7 +81,7 @@ class Receiver:
         futures.wait(self._query_fut, return_when=futures.ALL_COMPLETED)
         self._logger.info("Benchmark completed.")
         self._logger.info(
-            f"Miss rate: {self._miss_cnt / len(self._qual_score)}"
+            f"Miss rate: {self._miss_cnt / self._cnt}"
         )
         self._logger.info(
             f"Quality Score: {sum(self._qual_score) / len(self._qual_score)}"

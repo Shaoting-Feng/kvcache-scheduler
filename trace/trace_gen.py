@@ -8,7 +8,7 @@ import pandas as pd
 def main():
     n_docs: int = 200
     interval_ms: List[int] = [200, 400, 600, 800, 1000]
-    tot_time_ms: int = 30000
+    tot_time_ms: int = 120000
 
     for avg_interval in interval_ms:
         trace: pd.DataFrame = pd.DataFrame(columns=["ts", "doc_id"])  # type: ignore
