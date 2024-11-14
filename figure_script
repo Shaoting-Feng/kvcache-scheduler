@@ -1,0 +1,84 @@
+option = {
+  xAxis: {
+    name: 'Cache Hit Rate',
+    nameLocation: 'middle',
+    nameTextStyle: {
+      fontSize: 24,
+      padding: [20, 0, 0, 0]
+    },
+    min: 0,  // 设置 x 轴的最小值
+    max: 0.5 // 设置 x 轴的最大值
+  },
+  yAxis: {
+    name: 'Average Quality Score',
+    nameLocation: 'middle',
+    nameTextStyle: {
+      fontSize: 24,
+      padding: [0, 0, 20, 0]
+    },
+    min: 0.8,  // 设置 x 轴的最小值
+    max: 1 // 设置 x 轴的最大值
+  },
+  legend: {
+    data: ['Shortest Job First', 'Random', 'First Come First Serve', 'Shortest Job First with Version Selector'],
+    top: '0%',
+    textStyle: {
+      fontSize: 24
+    },
+    itemGap: 20 
+  },
+  series: [
+    {
+      name: 'Shortest Job First',
+      symbolSize: 20,
+      data: [
+        [0.32, 0.85],
+        [0.35, 0.85],
+        [0.33, 0.85]
+      ],
+      type: 'scatter',
+      itemStyle: {
+        color: '#3357FF'
+      }
+    },
+    {
+      name: 'Random',
+      symbolSize: 20,
+      data: [
+        [0.23, 0.85],
+        [0.17, 0.85],
+        [0.20, 0.85]
+      ],
+      type: 'scatter',
+      itemStyle: {
+        color: '#FF5733'
+      }
+    },
+    {
+      name: 'First Come First Serve',
+      symbolSize: 20,
+      data: [
+        [0.1977, 0.85],
+        [0.2396, 0.85],
+        [0.2055, 0.85]
+      ],
+      type: 'scatter',
+      itemStyle: {
+        color: '#33FF57'
+      }
+    },
+    {
+      name: 'Shortest Job First with Version Selector',
+      symbolSize: 20,
+      data: [
+        [0.26, 0.92],
+        [0.28, 0.92],
+        [0.27, 0.92]
+      ],
+      type: 'scatter',
+      itemStyle: {
+        color: '#FF33A1'
+      }
+    }
+  ]
+};
