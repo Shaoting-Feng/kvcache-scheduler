@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Event, Lock
 from time import monotonic_ns
 from typing import List, Optional
-
+import json
 import pandas as pd
 
 from flowsim.buffer import Buffer
@@ -16,7 +16,7 @@ LOG_DIR = pathlib.Path(__file__).parent.parent / "log"
 
 
 class Receiver:
-    def __init__(self, buf: Buffer, trace_file: str | Path):
+    def __init__(self, buf: Buffer, trace_file: str | Path, file_name: str):
         self._buf: Buffer = buf
         self._trace: pd.DataFrame = pd.read_csv(
             trace_file, dtype={"ts": int, "doc_id": int}
@@ -41,6 +41,7 @@ class Receiver:
         self._logger.addHandler(console_handler)
         self._logger.addHandler(file_handler)
         self._logger.setLevel(logging.INFO)
+        self.file_name = file_name
 
     def _submit_query(self, doc_id: int) -> None:
         self._logger.info(f"Sending query for doc {doc_id}...")
@@ -80,13 +81,25 @@ class Receiver:
 
         futures.wait(self._query_fut, return_when=futures.ALL_COMPLETED)
         self._logger.info("Benchmark completed.")
+        miss_rate = self._miss_cnt / self._cnt
         self._logger.info(
-            f"Miss rate: {self._miss_cnt / self._cnt}"
+            f"Miss rate: {miss_rate}"
         )
+        quality_score = sum(self._qual_score) / len(self._qual_score)
         self._logger.info(
-            f"Quality Score: {sum(self._qual_score) / len(self._qual_score)}"
+            f"Quality Score: {quality_score}"
         )
+        retrieval_time = sum(self._jct) / len(self._jct)
         self._logger.info(
             "Average retrival time for cache-hit query:"
-            f" {sum(self._jct) / len(self._jct)} ms"
+            f" {retrieval_time} ms"
         )
+
+        # Record the result separately
+        with open(self.file_name, mode='r+') as file:
+            file_data = json.load(file)
+            file_data['miss_rate'] = miss_rate
+            file_data['quality_score'] = quality_score
+            file_data['retrieval_time'] = retrieval_time
+            file.seek(0)
+            json.dump(file_data, file, indent=4)
