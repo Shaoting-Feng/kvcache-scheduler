@@ -7,10 +7,10 @@ This is the flow scheduling simulator for the final project for CMSC 333: Gradua
 
 ### How to install 
 
-In order to run the code, you need to install pandas and PyYAML by 
+In order to run the code, you need to install several packages.
 
 ```
-pip install pandas pyyaml
+pip install pandas csv
 ```
 
 Also, please add the path to flowsim to python path by: 

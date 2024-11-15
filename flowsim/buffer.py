@@ -3,8 +3,7 @@ from pathlib import Path
 from threading import Condition, Event, RLock, Thread
 from typing import Dict, List, Optional
 from time import monotonic_ns
-import yaml
-
+import json
 import pandas as pd
 
 from flowsim.common import Document, get_cur_bw, usleep
@@ -14,10 +13,6 @@ TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
 
 BUF2RECV_BW: pd.DataFrame = pd.read_csv(TRACE_DIR / "buf2recv_bw.csv")
 ST = monotonic_ns()
-
-with open('./config/buffer.yaml', 'r') as file:
-    config = yaml.safe_load(file)
-buffer_scheduler_value = config.get('buffer_scheduler', None)
 
 class Request:
     def __init__(self, id: int) -> None:
@@ -46,7 +41,8 @@ class Request:
 
 
 class Buffer:
-    def __init__(self) -> None:
+    def __init__(self, file_name: str, strategy: str) -> None:
+        self.buffer_scheduler_value = strategy
         self._cache_store: Dict[int, Document] = {}
         self._buf_lock: RLock = RLock()
         self._job_queue: List[Request] = []
@@ -87,7 +83,7 @@ class Buffer:
 
     def _worker(self):
         while True:
-            req_list: List[Request] = self._dispatch(buffer_scheduler_value)  # get the requests to be handled
+            req_list: List[Request] = self._dispatch(self.buffer_scheduler_value)  # get the requests to be handled
 
             total_size = sum(req.resp.size for req in req_list)
             
