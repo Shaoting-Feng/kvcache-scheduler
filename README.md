@@ -10,7 +10,7 @@ This is the flow scheduling simulator for the final project for CMSC 333: Gradua
 In order to run the code, you need to install several packages.
 
 ```
-pip install pandas csv
+pip install pandas
 ```
 
 Also, please add the path to flowsim to python path by: 
