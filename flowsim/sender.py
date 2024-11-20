@@ -123,6 +123,42 @@ class Sender:
         else:
             raise ValueError(f"Unsupported version id {version}")
         return self._workers.submit(self._submit_sending, doc, version, bw_share)
+
+    def gaussian_transition(self, current_doc_id: int, sigma: float) -> int:
+        """
+        Calculate the next doc_id based on a Gaussian distribution.
+        
+        Args:
+            current_doc_id (int): The current doc_id.
+            sigma (float): Standard deviation of the Gaussian kernel.
+
+        Returns:
+            int: The next doc_id.
+        """
+        # Generate the next doc_id using Gaussian distribution centered on current_doc_id
+        next_doc_id = int(np.random.normal(loc=current_doc_id, scale=sigma))
+        return max(0, next_doc_id)  # Ensure doc_id is non-negative
+
+     def run_with_gaussian(self, sigma: float = 1.0) -> None:
+        """
+        Run the sender using Gaussian-distributed doc_id transitions.
+
+        Args:
+            sigma (float): Standard deviation for the Gaussian distribution.
+        """
+        current_doc_id = self._trace.iloc[0]['doc_id']  # Start with the first doc_id in trace
+        
+        for _ in range(len(self._trace)):
+            # Calculate the next doc_id
+            next_doc_id = self.gaussian_transition(current_doc_id, sigma)
+
+            # Ensure next_doc_id exists in the trace
+            if next_doc_id in self._trace['doc_id'].values:
+                self.send_doc(next_doc_id, version=1)  # Send the document
+                current_doc_id = next_doc_id  # Update for the next iteration
+
+            # Optional: Add a delay between sends
+            usleep(int(50000))
     
     def run(self, strategy: str = "all_at_once") -> None:
         ####################### STUDENT CODE STARTS HERE ######################
@@ -240,7 +276,14 @@ class Sender:
                 bw_share = row['v1_lat'] / total_lat
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1, bw_share=bw_share)
-
+        elif strategy == "possion":
+            shuffled_trace = self._trace.sample(frac=1).reset_index(drop=True)
+            for _, row in shuffled_trace.iterrows():
+                # Use Poisson distribution for timing
+                poisson_interval_us = int(np.random.poisson(mean_interval_ms) * 1000)
+                if poisson_interval_us > 0:
+                    usleep(poisson_interval_us)
+                self.send_doc(row.doc_id, 1)
         else:
             raise ValueError("Unsupported strategy provided")
 

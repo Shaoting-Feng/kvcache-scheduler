@@ -68,11 +68,20 @@ class Receiver:
 
         for _, row in self._trace.iterrows():
             # trace ts is in ms, so convert it to us first
-            sleep_time_us: int = int(
-                row.ts * 1000 - int((monotonic_ns() - replay_st_ns) / 1000)  # type: ignore
-            )
-            if sleep_time_us > 0:
-                usleep(sleep_time_us)
+            # sleep_time_us: int = int(
+            #     row.ts * 1000 - int((monotonic_ns() - replay_st_ns) / 1000)  # type: ignore
+            # )
+            # if sleep_time_us > 0:
+            #     usleep(sleep_time_us)
+
+            # self._query_fut.append(
+            #     self._replayer.submit(self._submit_query, row.doc_id)
+            # )
+            poisson_interval_us = int(np.random.poisson(mean_interval_ms) * 1000)
+
+            # Sleep for the generated interval
+            if poisson_interval_us > 0:
+                usleep(poisson_interval_us)
 
             self._query_fut.append(
                 self._replayer.submit(self._submit_query, row.doc_id)
