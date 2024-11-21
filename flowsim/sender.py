@@ -124,10 +124,44 @@ class Sender:
             raise ValueError(f"Unsupported version id {version}")
         return self._workers.submit(self._submit_sending, doc, version, bw_share)
     
-    def run(self, strategy: str = "all_at_once") -> None:
+    def run(self, strategy: str = "sjf_random_version") -> None:
         ####################### STUDENT CODE STARTS HERE ######################
 
-        if strategy == "first_come_first_serve":
+        if strategy == "sjf_random_version":
+            # Randomly selects a version (v1, v2, or v3) for each document, 
+            # then sorts by the size of the selected version (Shortest Job First).
+            p1 = 0.3
+            p2 = 0.4
+            p3 = 1 - p1 - p2
+
+            new_trace = self._trace.copy()
+            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace), p=[p1, p2, p3])
+            new_trace['selected_size'] = new_trace.apply(
+                lambda row: row['v1_size'] if row['random_choice'] == 1 else
+                            row['v2_size'] if row['random_choice'] == 2 else
+                            row['v3_size'],
+                axis=1
+            )
+            sorted_trace = new_trace.sort_values(by='selected_size')
+            for _, row in sorted_trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, row.random_choice)
+
+        elif strategy == "random_random_version":
+            # Random Strategy: Shuffles the document list randomly, then sends each document in random order.
+            # sending using random version
+            p1 = 0.3
+            p2 = 0.4
+            p3 = 1 - p1 - p2
+
+            new_trace = self._trace.copy()
+            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace), p=[p1, p2, p3])
+            shuffled_trace = new_trace.sample(frac=1).reset_index(drop=True)
+            for _, row in shuffled_trace.iterrows():
+                usleep(int(50000))
+                self.send_doc(row.doc_id, row.random_choice)
+
+        elif strategy == "first_come_first_serve":
             # First-Come-First-Serve Strategy:
             # Documents are sent in the order they arrive in the trace file,
             # ensuring that the first document in the list is sent first.
@@ -141,20 +175,6 @@ class Sender:
             # those with the shortest latency first to maximize responsiveness.
             sorted_trace = self._trace.sort_values(by='v1_lat')
             for _, row in sorted_trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, 1)
-
-        elif strategy == "shortest_job_first":
-            sorted_trace = self._trace.sort_values(by='v1_size')
-            for _, row in sorted_trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, 1)
-
-        elif strategy == "random":
-            # Random Strategy:
-            # Shuffles the document list randomly, then sends each document in random order.
-            shuffled_trace = self._trace.sample(frac=1).reset_index(drop=True)
-            for _, row in shuffled_trace.iterrows():
                 usleep(int(50000))
                 self.send_doc(row.doc_id, 1)
 
@@ -203,22 +223,6 @@ class Sender:
                 version = random.choice([1, 2, 3])
                 usleep(int(50000))
                 self.send_doc(row.doc_id, version)
-
-        elif strategy == "random_version_sjf":
-            # Randomly selects a version (v1, v2, or v3) for each document, 
-            # then sorts by the size of the selected version (Shortest Job First).
-            new_trace = self._trace.copy()
-            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace))
-            new_trace['selected_size'] = new_trace.apply(
-                lambda row: row['v1_size'] if row['random_choice'] == 1 else
-                            row['v2_size'] if row['random_choice'] == 2 else
-                            row['v3_size'],
-                axis=1
-            )
-            sorted_trace = new_trace.sort_values(by='selected_size')
-            for _, row in sorted_trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, row.random_choice)
 
         elif strategy == "equal_bandwidth_share":
             # Equal Bandwidth Sharing Strategy:
