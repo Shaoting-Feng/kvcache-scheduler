@@ -7,9 +7,9 @@ import pandas as pd
 
 def main():
     n_docs: int = 200
-    interval_ms: List[int] = [200, 400, 600, 800, 1000]
-    tot_time_ms: int = 120000
-    sigma: float = 10  # Standard deviation for Gaussian transition
+    interval_ms: List[int] = [200, 400, 600, 800, 1000, 5000]
+    tot_time_ms: int = 200000
+    sigma: float = 3  # Standard deviation for Gaussian transition
 
     for avg_interval in interval_ms:
         trace: pd.DataFrame = pd.DataFrame(columns=["ts", "doc_id"])  # type: ignore

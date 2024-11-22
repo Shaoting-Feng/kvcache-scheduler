@@ -58,7 +58,7 @@ class Receiver:
             self._logger.info(f"Buffer reports doc {doc_id} is not ready yet.")
         else:
             self._logger.info(
-                f"Buffer returns doc {doc_id} KV Cacahe"
+                f"Buffer returns doc {doc_id} KV Cache"
                 f" with quality score {resp.quality}."
             )
 

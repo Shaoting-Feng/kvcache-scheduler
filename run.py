@@ -3,7 +3,7 @@ import json
 import time
 from threading import Thread
 
-from flowsim import Buffer, Receiver, Sender
+from flowsim import Buffer, Receiver, Sender, SlidingWindow
 
 TRACE_DIR = pathlib.Path(__file__).parent / "trace"
 
@@ -11,9 +11,11 @@ TRACE_DIR = pathlib.Path(__file__).parent / "trace"
 timestamp = time.strftime("%Y%m%d_%H%M%S")
 file_name = f"log/result_{timestamp}.json"
 
-trace = "poisson-600ms.trace"
-sender_strategy = "first_come_first_serve"
+# The parameters that need to be changed
+trace = "poisson-5000ms.trace"
+sender_strategy = "sliding_sliding"
 buffer_startegy = "fifo"
+sliding_window_size = 10
 
 # Record the configuration
 with open(file_name, mode='w') as file:
@@ -22,9 +24,11 @@ with open(file_name, mode='w') as file:
     json.dump(data, file, indent=4)
 
 def main():
-    buf = Buffer(file_name, buffer_startegy)
+    sliding_window = SlidingWindow(sliding_window_size)
+
+    buf = Buffer(file_name, buffer_startegy, sliding_window)
     receiver = Receiver(buf, TRACE_DIR / trace, file_name)
-    sender = Sender(buf, TRACE_DIR / "doc_stats.csv")
+    sender = Sender(buf, TRACE_DIR / "doc_stats.csv", sliding_window)
 
     receiver_thread: Thread = Thread(target=receiver.trace_replay)
     sender_thread: Thread = Thread(target=sender.run, kwargs={"strategy": sender_strategy})
