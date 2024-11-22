@@ -4,9 +4,11 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from scipy.stats import norm
 
 from flowsim.buffer import Buffer
 from flowsim.common import Document, get_cur_bw, usleep
+from flowsim.slidingwindow import SlidingWindow
 
 TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
 LOG_DIR = Path(__file__).parent.parent / "log"
@@ -42,7 +44,7 @@ class _AtomicInteger:
 
 
 class Sender:
-    def __init__(self, buf: Buffer, trace_file: str | Path) -> None:
+    def __init__(self, buf: Buffer, trace_file: str | Path, sliding_window: SlidingWindow) -> None:
         self._buf: Buffer = buf
         self._trace: pd.DataFrame = pd.read_csv(trace_file)
         self._n_ongoing_send: _AtomicInteger = _AtomicInteger(0)
@@ -67,6 +69,7 @@ class Sender:
         start_file_handler.setFormatter(formatter)
         self._start_logger.addHandler(start_file_handler)
         self._start_logger.setLevel(logging.INFO)
+        self.sliding_window = sliding_window
 
     def _submit_sending(self, doc: Document, version: int, bw_share: float = 1.0) -> None:
         self._start_logger.info(
@@ -124,42 +127,131 @@ class Sender:
             raise ValueError(f"Unsupported version id {version}")
         return self._workers.submit(self._submit_sending, doc, version, bw_share)
     
-    def run(self, strategy: str = "sjf_random_version") -> None:
-        ####################### STUDENT CODE STARTS HERE ######################
+    def run(self, strategy: str = "sjf_random") -> None:
 
-        if strategy == "sjf_random_version":
-            # Randomly selects a version (v1, v2, or v3) for each document, 
-            # then sorts by the size of the selected version (Shortest Job First).
-            p1 = 0.3
-            p2 = 0.4
-            p3 = 1 - p1 - p2
-
-            new_trace = self._trace.copy()
-            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace), p=[p1, p2, p3])
-            new_trace['selected_size'] = new_trace.apply(
-                lambda row: row['v1_size'] if row['random_choice'] == 1 else
-                            row['v2_size'] if row['random_choice'] == 2 else
-                            row['v3_size'],
-                axis=1
-            )
-            sorted_trace = new_trace.sort_values(by='selected_size')
-            for _, row in sorted_trace.iterrows():
-                usleep(int(50000))
-                self.send_doc(row.doc_id, row.random_choice)
-
-        elif strategy == "random_random_version":
+        if strategy == "random_random":
             # Random Strategy: Shuffles the document list randomly, then sends each document in random order.
             # sending using random version
             p1 = 0.3
             p2 = 0.4
             p3 = 1 - p1 - p2
 
-            new_trace = self._trace.copy()
-            new_trace['random_choice'] = np.random.choice([1, 2, 3], size=len(new_trace), p=[p1, p2, p3])
-            shuffled_trace = new_trace.sample(frac=1).reset_index(drop=True)
+            shuffled_trace = self._trace.sample(frac=1).reset_index(drop=True)
             for _, row in shuffled_trace.iterrows():
-                usleep(int(50000))
+                self.send_doc(row.doc_id, np.random.choice([1, 2, 3], p=[p1, p2, p3]))
+        
+        elif strategy == "sjf_random":
+            # 1. Sort all documents by the original size (Shortest Job First)
+            # 2. Send documents in the sorted order with a random version
+            p1 = 0.3
+            p2 = 0.4
+            p3 = 1 - p1 - p2
+
+            sorted_trace = self._trace.sort_values(by='v3_size')
+            for _, row in sorted_trace.iterrows():
+                # usleep(int(50000)) # Uncomment this line to simulate prefill delay
+                self.send_doc(row.doc_id, np.random.choice([1, 2, 3], p=[p1, p2, p3]))
+        
+        elif strategy == "improvedsjf_random":
+            # 1. Randomly selects a version (v1, v2, or v3) for each document
+            # 2. Sort all documents by the size of the selected version (Shortest Job First)
+            # 3. Send documents in the sorted order with the pre-selected version
+            p1 = 0.3
+            p2 = 0.4
+            p3 = 1 - p1 - p2
+
+            self._trace['random_choice'] = np.random.choice([1, 2, 3], size=len(self._trace), p=[p1, p2, p3])
+            self._trace['selected_size'] = self._trace.apply(
+                lambda row: row['v1_size'] if row['random_choice'] == 1 else
+                            row['v2_size'] if row['random_choice'] == 2 else
+                            row['v3_size'],
+                axis=1
+            )
+            sorted_trace = self._trace.sort_values(by='selected_size')
+            for _, row in sorted_trace.iterrows():
                 self.send_doc(row.doc_id, row.random_choice)
+
+        elif strategy == "sliding_random":
+            # 1. Use a sliding window to calculate the probability of which document would be requested next 
+            # 2. Sort all documents by sent status, probability, and the original size
+            # 3. If no document is sending, send documents in the sorted order with a random version
+            std_dev = 10
+            p1 = 0.3
+            p2 = 0.4
+            p3 = 1 - p1 - p2
+
+            self._trace['sent'] = False
+            self._trace['prob'] = 0
+            while (True):
+                if self._n_ongoing_send.value == 0:
+                    window = self.sliding_window.window
+                    x_values = np.arange(0, len(self._trace))
+                    cumulative_values = np.zeros_like(x_values, dtype=np.float64)
+                    for i in range(len(window)):
+                        if window[i][0] != -1:
+                            cumulative_values += norm.pdf(x_values, loc=window[i][0], scale=std_dev)
+                    self._trace['prob'] = cumulative_values
+                    sorted_trace = self._trace.sort_values(
+                        by=['sent', 'prob', 'v3_size'], 
+                        ascending=[True, False, True]
+                    ).reset_index(drop=True)
+                    if sorted_trace.iloc[0]['sent'] == False:
+                        original_index = sorted_trace.iloc[0]['index'] 
+                        self._trace.at[original_index, 'sent'] = True
+                        doc_id = sorted_trace.iloc[0]['doc_id']
+                        self.send_doc(doc_id, np.random.choice([1, 2, 3], p=[p1, p2, p3]))
+                    else:
+                        break
+
+        elif strategy == "sliding_sliding":
+            # 1. Use a sliding window to calculate the probability of which document would be requested next
+            # 2. Use the sliding window to calculate the sum of the received sizes
+            # 3. Sort all documents by sent status, probability, and the original size
+            # 4. If no document is sending, pick this document to send
+            # 5. Calculte the expected version that can be received and send with this version 
+            std_dev = 10
+
+            self._trace['sent'] = False
+            self._trace['prob'] = 0
+            while (True):
+                if self._n_ongoing_send.value == 0:
+                    window = self.sliding_window.window
+                    x_values = np.arange(0, len(self._trace))
+                    cumulative_values = np.zeros_like(x_values, dtype=np.float64)
+                    product = 0
+                    window_size = 0
+                    for i in range(len(window)):
+                        if window[i][0] != -1:
+                            cumulative_values += norm.pdf(x_values, loc=window[i][0], scale=std_dev)
+                            # TODO: avoid hard-coded quality scores
+                            if window[i][1] == 0.85:
+                                product += self._trace.at[window[i][0], 'v1_size']
+                            elif window[i][1] == 0.97:
+                                product += self._trace.at[window[i][0], 'v2_size']
+                            elif window[i][1] == 1:
+                                product += self._trace.at[window[i][0], 'v3_size']
+                            window_size += 1
+                    self._trace['prob'] = cumulative_values
+                    sorted_trace = self._trace.sort_values(
+                        by=['sent', 'prob', 'v3_size'], 
+                        ascending=[True, False, True]
+                    ).reset_index(drop=True)
+                    if sorted_trace.iloc[0]['sent'] == False:
+                        original_index = sorted_trace.iloc[0]['index'] 
+                        self._trace.at[original_index, 'sent'] = True
+                        doc_id = sorted_trace.iloc[0]['doc_id']
+                        product_threshold1 = self._trace.at[original_index, 'v1_size'] 
+                        product_threshold2 = self._trace.at[original_index, 'v2_size']
+                        if window_size == 0:
+                            self.send_doc(doc_id, 1)
+                        elif product / window_size > product_threshold2:
+                            self.send_doc(doc_id, 3)
+                        elif product / window_size < product_threshold1:
+                            self.send_doc(doc_id, 2)
+                        else:
+                            self.send_doc(doc_id, 1)
+                    else:
+                        break
 
         elif strategy == "first_come_first_serve":
             # First-Come-First-Serve Strategy:
@@ -248,7 +340,6 @@ class Sender:
         else:
             raise ValueError("Unsupported strategy provided")
 
-        ######################## STUDENT CODE ENDS
 
 if __name__ == "__main__":
     # Initialize Buffer and Sender with relative paths

@@ -7,6 +7,7 @@ import json
 import pandas as pd
 
 from flowsim.common import Document, get_cur_bw, usleep
+from flowsim.slidingwindow import SlidingWindow
 
 LOG_DIR: Path = Path(__file__).parent.parent / "log"
 TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
@@ -41,7 +42,7 @@ class Request:
 
 
 class Buffer:
-    def __init__(self, file_name: str, strategy: str) -> None:
+    def __init__(self, file_name: str, strategy: str, sliding_window: SlidingWindow) -> None:
         self.buffer_scheduler_value = strategy
         self._cache_store: Dict[int, Document] = {}
         self._buf_lock: RLock = RLock()
@@ -61,6 +62,7 @@ class Buffer:
         self._logger.addHandler(console_handler)
         self._logger.addHandler(file_handler)
         self._logger.setLevel(logging.INFO)
+        self.sliding_window = sliding_window
 
     def _wait_not_empty(self) -> None:
         with self._is_empty:
@@ -118,6 +120,7 @@ class Buffer:
         # directly return miss if sender has not generate the KV cache for
         # requested doc by the time of request arrival
         if id not in self._cache_store:
+            self.sliding_window.add(id, 0)
             return None
 
         req: Request = Request(id)
@@ -128,6 +131,7 @@ class Buffer:
 
         self._submit_for_sched(req)
         resp: Optional[Document] = req.wait_for_resp()
+        self.sliding_window.add(id, resp.quality if resp is not None else 0)
         return resp
 
     def fifo_scheduling(self) -> Request:
