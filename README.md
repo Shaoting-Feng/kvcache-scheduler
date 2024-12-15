@@ -1,4 +1,4 @@
-This is the flow scheduling simulator for the final project for CMSC 333: Graduate Computer Networking @ UChicago. 
+This is the flow scheduling simulator. 
 
 ### Structure of codebase
 - flowsim: the directory that contains the classes for the **sender**, **buffer** and **receiver** 
