@@ -7,7 +7,7 @@ import json
 import pandas as pd
 
 from flowsim.common import Document, get_cur_bw, usleep
-from flowsim.slidingwindow import SlidingWindow
+from flowsim.slidingwindow import SlidingWindow, SlidingWindowTimeBased
 
 LOG_DIR: Path = Path(__file__).parent.parent / "log"
 TRACE_DIR: Path = Path(__file__).parent.parent / "trace"
@@ -42,7 +42,7 @@ class Request:
 
 
 class Buffer:
-    def __init__(self, file_name: str, strategy: str, sliding_window: SlidingWindow) -> None:
+    def __init__(self, file_name: str, strategy: str, sliding_window: SlidingWindow | SlidingWindowTimeBased) -> None:
         self.buffer_scheduler_value = strategy
         self._cache_store: Dict[int, Document] = {}
         self._buf_lock: RLock = RLock()

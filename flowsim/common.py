@@ -12,9 +12,9 @@ ST: float = monotonic_ns() / 1e6
 @dataclass
 class Document:
     id: int
-    size: int
-    quality: int
-    gen_lat: int
+    size: float
+    quality: float
+    gen_lat: float
 
 
 usleep: Callable[[int], None] = (
