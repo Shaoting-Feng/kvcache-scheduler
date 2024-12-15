@@ -25,11 +25,3 @@ An example run:
 python run.py
 ```
 Check the hit rate, quality score, average retrieval time in log/receiver.log. 
-
-
-### Where to add your code
-
-- Sending function @ the sender: add your implementation  in the ```run``` function. To send a KV cache of a specific ```doc_id```, and a specific compression version ```version```, call the ```send_doc(doc_id, version)``` function which will send the KV cache to buffer. Note that the ```send_doc``` is an asynchronous function. 
-- Sending function @ the buffer: add your implementation in the ```_dispatch``` function. When the receiver send a request to the buffer, if the KV cache is present, then the request will be submitted to the job queue.
-Your job in the ```_dispatch``` function is to select one from the job queue when there are many, to respond first. 
-A potentially useful function is ```enqueue_time``` function which shows how long the job has been in the job queue. 
